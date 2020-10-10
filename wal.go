@@ -2,6 +2,7 @@ package dbengine
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,7 +21,18 @@ type Wal interface {
 	Delete() error
 
 	// File -- returns the underlying WAL file
-	File() *os.File
+	File() WalFile
+}
+
+// WalFile - file interface that defines basic methods needed for WAL operations
+// the interface can be satisfied by `os.File`
+type WalFile interface {
+	io.Writer
+	io.Reader
+
+	Truncate(int64) error
+	Stat() (os.FileInfo, error)
+	Name() string
 }
 
 const (
@@ -53,7 +65,7 @@ func (walErr WalError) Unwrap() error {
 type BasicWal struct {
 	lock sync.Mutex
 	// file is the opened underlying file
-	file *os.File
+	file WalFile
 	// seq is the sequence number of the latest written log
 	seq uint32
 }
@@ -85,7 +97,7 @@ func NewBasicWal(walDir string) (*BasicWal, error) {
 
 // NewWalFile - creates a new WAL file with name "wal_<unix timestamp>" under `walDir`
 func NewWalFile(walDir string) (*os.File, error) {
-	ts := time.Now().Unix()
+	ts := time.Now().UnixNano()
 	filename := filepath.Join(walDir, fmt.Sprintf("wal_%d", ts))
 	// os.O_CREATE|os.O_EXCL - create file only when it doesn't exist, error out otherwise
 	// os.O_RDWR - open for read & write
@@ -116,19 +128,21 @@ func (wal *BasicWal) Append(log []byte) error {
 			Err:           err,
 		}
 	}
+	oldSize := fileInfo.Size()
 
 	newLog := &BasicWalLog{
 		seq:  wal.seq + 1,
 		data: log,
 	}
-	written, err := wal.file.Write(newLog.Serialize())
+	logBytes := newLog.Serialize()
+	written, err := wal.file.Write(logBytes)
 
 	if err != nil {
 		// when the log is partially written, we should rollback to the previous sequence number
 		// and return an append error
-		if written != len(log) {
-			if err = wal.rollback(fileInfo.Size()); err != nil {
-				return err
+		if written != len(logBytes) {
+			if rollbackErr := wal.rollback(oldSize); rollbackErr != nil {
+				return rollbackErr
 			}
 		}
 		return &WalError{
@@ -154,7 +168,7 @@ func (wal *BasicWal) rollback(size int64) error {
 }
 
 // File -- returns the underlying WAL file
-func (wal *BasicWal) File() *os.File {
+func (wal *BasicWal) File() WalFile {
 	return wal.file
 }
 
