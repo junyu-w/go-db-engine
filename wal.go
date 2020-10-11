@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/DrakeW/go-db-engine/pb"
+	"github.com/golang/protobuf/proto"
 )
 
 // Wal - represents a write-ahead-log
@@ -77,9 +80,18 @@ type BasicWalLog struct {
 }
 
 // Serialize - turn the WAL log into bytes
-// TODO: use a binary format for efficient encoding/decoding
-func (l *BasicWalLog) Serialize() []byte {
-	return []byte(fmt.Sprintf("seq-%d-value-%s\n", l.seq, string(l.data)))
+// The serialization format is <length of bytes>\n<protobuf message of actua log>
+func (l *BasicWalLog) Serialize() ([]byte, error) {
+	log := &pb.WalLog{
+		Seq:  l.seq,
+		Data: l.data,
+	}
+	logData, err := proto.Marshal(log)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to serialize WAL log - Error: %w", err)
+	}
+	data := append([]byte(fmt.Sprintf("%d\n", len(logData))), logData...)
+	return data, nil
 }
 
 // NewBasicWal - creates a new WAL instance and an underlying WAL file
@@ -134,7 +146,14 @@ func (wal *BasicWal) Append(log []byte) error {
 		seq:  wal.seq + 1,
 		data: log,
 	}
-	logBytes := newLog.Serialize()
+	logBytes, err := newLog.Serialize()
+	if err != nil {
+		return &WalError{
+			Op:            OP_APPEND,
+			BeforeLastSeq: wal.seq,
+			Err:           err,
+		}
+	}
 	written, err := wal.file.Write(logBytes)
 
 	if err != nil {

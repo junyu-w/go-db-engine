@@ -88,8 +88,13 @@ func Test_AppendShouldAppendNewLog(t *testing.T) {
 	log := BasicWalLog{seq: 1, data: data}
 
 	fileData, _ := ioutil.ReadFile(f.Name())
-	if string(fileData) != string(log.Serialize()) {
+	expected, _ := log.Serialize()
+	if string(fileData) != string(expected) {
 		t.Errorf("Incorrect file content - %s", string(fileData))
+	}
+
+	if wal.seq != 1 {
+		t.Errorf("Seqeuence number isn't incremented")
 	}
 }
 
