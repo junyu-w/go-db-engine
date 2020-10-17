@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/DrakeW/go-db-engine/pb"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // Wal - represents a write-ahead-log
@@ -17,7 +17,7 @@ type Wal interface {
 	// Append - append an operation log to the WAL file
 	Append([]byte) error
 
-	// TODO: Replay - returns a channel of operations logs, EOF indicates we've reached the end of the WAL
+	// TODO: (P1) Replay - returns a channel of operations logs, EOF indicates we've reached the end of the WAL
 	// Replay() <-chan []byte
 
 	// Delete - delete the WAL file
@@ -115,7 +115,7 @@ func NewWalFile(walDir string) (*os.File, error) {
 	// os.O_RDWR - open for read & write
 	// os.O_SYNC - enable synchronous IO (write always flush to underlying hardware, like "write" + "fsync")
 	// os.O_APPEND - file is open for APPEND only (no seeking needed)
-	// TODO: Since O_SYNC degrade perf, maybe it could be an optional flag for the user to determine how safe they want their system to be during crash. For some battery powered hardware, even when the OS crashes or machined died (powered-off), the file system cache can still be flushed to the underlying hardware
+	// TODO: (P3) Since O_SYNC degrade perf, maybe it could be an optional flag for the user to determine how safe they want their system to be during crash. For some battery powered hardware, even when the OS crashes or machined died (powered-off), the file system cache can still be flushed to the underlying hardware
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_EXCL|os.O_RDWR|os.O_SYNC, 0644)
 	if err != nil {
 		return nil, &WalError{

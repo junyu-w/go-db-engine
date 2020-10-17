@@ -125,7 +125,7 @@ func Test_AppendShouldRollbackIfLogNotFullyWritten(t *testing.T) {
 	}
 
 	// check if file has been rolledback
-	// TODO: it looks like even with multi-writer, the content isn't being written to the file. Investigate later
+	// TODO: (P3) it looks like even with multi-writer, the content isn't being written to the file. Investigate later
 	newContent, _ := ioutil.ReadFile(fileName)
 	if string(oldContent) != string(newContent) {
 		t.Errorf("Content should have been rolled back, instead it is - %s", string(newContent))
