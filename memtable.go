@@ -79,7 +79,7 @@ func (m *SkipListMemTable) Write(key string, value []byte) error {
 
 // keyValueToWalLogBytes - converts a key value pair into raw bytes for WAL insertion
 func (m *SkipListMemTable) keyValueToWalLogBytes(key string, value []byte) ([]byte, error) {
-	log := &pb.KeyValueWalLog{
+	log := &pb.MemtableKeyValue{
 		Key:   key,
 		Value: value,
 	}
@@ -118,7 +118,7 @@ func (m *SkipListMemTable) Delete(key string) error {
 }
 
 // Serialize - serialize the memtable into bytes that can be stored on filesystem
-// TODO: (P2)
+// TODO: (P1) Also, should this be here? since the serialized data is supposed to be understood by the database during `Get`
 func (m *SkipListMemTable) Serialize() []byte {
 	return nil
 }

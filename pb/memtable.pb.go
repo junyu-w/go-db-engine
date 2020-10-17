@@ -25,7 +25,7 @@ const (
 // of the legacy proto package is being used.
 const _ = proto.ProtoPackageIsVersion4
 
-type KeyValueWalLog struct {
+type MemtableKeyValue struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -34,8 +34,8 @@ type KeyValueWalLog struct {
 	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 }
 
-func (x *KeyValueWalLog) Reset() {
-	*x = KeyValueWalLog{}
+func (x *MemtableKeyValue) Reset() {
+	*x = MemtableKeyValue{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_memtable_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -43,13 +43,13 @@ func (x *KeyValueWalLog) Reset() {
 	}
 }
 
-func (x *KeyValueWalLog) String() string {
+func (x *MemtableKeyValue) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*KeyValueWalLog) ProtoMessage() {}
+func (*MemtableKeyValue) ProtoMessage() {}
 
-func (x *KeyValueWalLog) ProtoReflect() protoreflect.Message {
+func (x *MemtableKeyValue) ProtoReflect() protoreflect.Message {
 	mi := &file_memtable_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -61,19 +61,19 @@ func (x *KeyValueWalLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use KeyValueWalLog.ProtoReflect.Descriptor instead.
-func (*KeyValueWalLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use MemtableKeyValue.ProtoReflect.Descriptor instead.
+func (*MemtableKeyValue) Descriptor() ([]byte, []int) {
 	return file_memtable_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *KeyValueWalLog) GetKey() string {
+func (x *MemtableKeyValue) GetKey() string {
 	if x != nil {
 		return x.Key
 	}
 	return ""
 }
 
-func (x *KeyValueWalLog) GetValue() []byte {
+func (x *MemtableKeyValue) GetValue() []byte {
 	if x != nil {
 		return x.Value
 	}
@@ -84,11 +84,11 @@ var File_memtable_proto protoreflect.FileDescriptor
 
 var file_memtable_proto_rawDesc = []byte{
 	0x0a, 0x0e, 0x6d, 0x65, 0x6d, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x22, 0x38, 0x0a, 0x0e, 0x4b, 0x65, 0x79, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x57, 0x61, 0x6c, 0x4c,
-	0x6f, 0x67, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
-	0x03, 0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0c, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x42, 0x04, 0x5a, 0x02, 0x70, 0x62,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x22, 0x3a, 0x0a, 0x10, 0x4d, 0x65, 0x6d, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x4b, 0x65, 0x79, 0x56,
+	0x61, 0x6c, 0x75, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x42, 0x04, 0x5a, 0x02,
+	0x70, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -105,7 +105,7 @@ func file_memtable_proto_rawDescGZIP() []byte {
 
 var file_memtable_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_memtable_proto_goTypes = []interface{}{
-	(*KeyValueWalLog)(nil), // 0: KeyValueWalLog
+	(*MemtableKeyValue)(nil), // 0: MemtableKeyValue
 }
 var file_memtable_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -122,7 +122,7 @@ func file_memtable_proto_init() {
 	}
 	if !protoimpl.UnsafeEnabled {
 		file_memtable_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*KeyValueWalLog); i {
+			switch v := v.(*MemtableKeyValue); i {
 			case 0:
 				return &v.state
 			case 1:
