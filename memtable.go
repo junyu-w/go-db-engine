@@ -23,11 +23,17 @@ type MemTable interface {
 	// Wal - returns the write-ahead-log instance for write ops recording
 	Wal() Wal
 
-	// Serialize - serialize the memtable into bytes that can be stored on filesystem
-	Serialize() []byte
+	// GetAll - returns all records stored in the memtable
+	GetAll() []*MemtableRecord
 
 	// SizeBytes - returns the total size of data stored in this memtable
 	SizeBytes() uint32
+}
+
+// MemtableRecord - represents a single inserted record
+type MemtableRecord struct {
+	Key   string
+	Value []byte
 }
 
 // SkipListMemTable - A memtable implementation using the skip list data structure
@@ -117,14 +123,22 @@ func (m *SkipListMemTable) Delete(key string) error {
 	return nil
 }
 
-// Serialize - serialize the memtable into bytes that can be stored on filesystem
-// TODO: (P1) Also, should this be here? since the serialized data is supposed to be understood by the database during `Get`
-func (m *SkipListMemTable) Serialize() []byte {
-	return nil
-}
-
 // GetRange - retrieves all values from specified key range
 // TODO: P(2)
 func (m *SkipListMemTable) GetRange(start, end string) [][]byte {
 	return nil
+}
+
+// GetAll - returns all records stored in the memtable
+func (m *SkipListMemTable) GetAll() []*MemtableRecord {
+	records := make([]*MemtableRecord, m.s.size, m.s.size)
+	i := 0
+	for node := m.s.head; node != m.s.sentinel && node != nil; node = node.forwardNodeAtLevel[0] {
+		records[i] = &MemtableRecord{
+			Key:   node.key,
+			Value: node.value,
+		}
+		i++
+	}
+	return records
 }

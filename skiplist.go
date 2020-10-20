@@ -8,7 +8,8 @@ import (
 
 type skipList struct {
 	head     *node
-	height   int
+	height   int     // how many levels are there
+	size     int     // how many nodes are there
 	prob     float32 // a probability used to determine up to what level should a new node be created
 	sentinel *node
 }
@@ -23,7 +24,8 @@ func newSkipList() *skipList {
 	sentinel := newNode("", []byte{})
 	return &skipList{
 		head:     sentinel,
-		height:   1,    // how many levels are there
+		height:   1,
+		size:     0,
 		prob:     0.25, // use hardcoded probability for now
 		sentinel: sentinel,
 	}
@@ -155,6 +157,7 @@ func (s *skipList) insertNewNode(newNode *node, updateAnchors []*node) {
 			newNode.forwardNodeAtLevel[level] = oldNext
 		}
 	}
+	s.size++
 }
 
 func (s *skipList) prettyPrint() {

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+option go_package = "pb";
+
+message SSTableBlock {
+  repeated SSTableKeyValue data = 1;
+}
+
+message SSTableKeyValue {
+  string key = 1;
+  bytes value = 2;
+}
+
+message SSTableIndex {
+  map<string, uint64> data = 1;
+}

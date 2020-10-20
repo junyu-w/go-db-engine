@@ -134,6 +134,20 @@ func TestSearchNonExistInMultiElementsList(t *testing.T) {
 	}
 }
 
+func Test_skipListShouldTrackSize(t *testing.T) {
+	s := newSkipList()
+
+	keyList := makeRange(t, 10, true)
+	for _, key := range keyList {
+		s.upsert(strconv.Itoa(key), []byte(fmt.Sprintf("hello world %s", strconv.Itoa(key))))
+	}
+
+	res := s.size
+	if res != 10 {
+		t.Errorf("Size is incorrect - got: %d", res)
+	}
+}
+
 func BenchmarkInsertInOrder(b *testing.B) {
 	s := newSkipList()
 	for i := 0; i < b.N; i++ {
