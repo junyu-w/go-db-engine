@@ -3,6 +3,7 @@ package dbengine
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -130,6 +131,12 @@ func (s *BasicSSTable) Dump(m MemTable) error {
 
 // writeDataAndBuildIndex - write data to the sstable file and build the index based on the data
 func (s *BasicSSTable) writeDataAndBuildIndex(records []*MemtableRecord) error {
+	// record current pos for data size header
+	sizeHeaderOffset, err := s.file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+
 	// write data size header placeholder
 	sizeBuf := make([]byte, binary.MaxVarintLen64)
 	if _, err := s.file.Write(sizeBuf); err != nil {
@@ -144,7 +151,7 @@ func (s *BasicSSTable) writeDataAndBuildIndex(records []*MemtableRecord) error {
 
 	// write data size to the header
 	binary.PutUvarint(sizeBuf, uint64(totalWritten))
-	if _, err = s.file.WriteAt(sizeBuf, 0); err != nil {
+	if _, err = s.file.WriteAt(sizeBuf, sizeHeaderOffset); err != nil {
 		return err
 	}
 
