@@ -42,23 +42,31 @@ func (tf *TestFile) Name() string                { return tf.File.Name() }
 // with `errDeviceFull`
 type BadTruncateWriter struct {
 	io.Writer
-	size int64
+	size    int64
+	written int64
 }
 
 var errDeviceFull error = fmt.Errorf("Device full")
 
 func (bw *BadTruncateWriter) Write(p []byte) (int, error) {
-	w := iotest.TruncateWriter(bw.Writer, bw.size)
+	truncateAt := bw.size - bw.written
+
+	w := iotest.TruncateWriter(bw.Writer, truncateAt)
 	written, err := w.Write(p)
 	if err != nil {
 		return written, err
 	}
-	return int(bw.size), errDeviceFull
+	if int64(written) >= truncateAt {
+		return written, errDeviceFull
+	}
+
+	bw.written += int64(written)
+	return written, nil
 }
 
 func badTruncateWriter(t *testing.T, w io.Writer, size int64) io.Writer {
 	t.Helper()
-	return &BadTruncateWriter{w, size}
+	return &BadTruncateWriter{w, size, 0}
 }
 
 func Test_CreateNewWalFileShouldCreateFile(t *testing.T) {
@@ -87,7 +95,8 @@ func Test_AppendShouldAppendNewLog(t *testing.T) {
 
 	log := BasicWalLog{seq: 1, data: data}
 
-	fileData, _ := ioutil.ReadFile(f.Name())
+	fileContent, _ := ioutil.ReadFile(f.Name())
+	fileData, _ := ReadDataWithVarintPrefix(bytes.NewReader(fileContent), nil)
 	expected, _ := log.Serialize()
 	if string(fileData) != string(expected) {
 		t.Errorf("Incorrect file content - %s", string(fileData))
@@ -105,6 +114,9 @@ func Test_AppendShouldRollbackIfLogNotFullyWritten(t *testing.T) {
 	// create a bad truncate writer that errors after writing 5 bytes
 	w := badTruncateWriter(t, buf, 5)
 	testFile := newTestFile(t, buf, w)
+
+	// add some original content to the underlying file before writing logs
+	testFile.File.Write([]byte("old content"))
 
 	fileName := testFile.Name()
 	oldContent, _ := ioutil.ReadFile(fileName)
@@ -125,10 +137,9 @@ func Test_AppendShouldRollbackIfLogNotFullyWritten(t *testing.T) {
 	}
 
 	// check if file has been rolledback
-	// TODO: (P3) it looks like even with multi-writer, the content isn't being written to the file. Investigate later
-	newContent, _ := ioutil.ReadFile(fileName)
-	if string(oldContent) != string(newContent) {
-		t.Errorf("Content should have been rolled back, instead it is - %s", string(newContent))
+	fileContent, _ := ioutil.ReadFile(fileName)
+	if string(oldContent) != string(fileContent) {
+		t.Errorf("Content should have been rolled back, instead it is - %s", string(fileContent))
 	}
 }
 

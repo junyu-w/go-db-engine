@@ -80,7 +80,6 @@ type BasicWalLog struct {
 }
 
 // Serialize - turn the WAL log into bytes
-// The serialization format is <length of bytes>\n<protobuf message of actua log>
 func (l *BasicWalLog) Serialize() ([]byte, error) {
 	log := &pb.WalLog{
 		Seq:  l.seq,
@@ -90,8 +89,7 @@ func (l *BasicWalLog) Serialize() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to serialize WAL log - Error: %w", err)
 	}
-	data := append([]byte(fmt.Sprintf("%d\n", len(logData))), logData...)
-	return data, nil
+	return logData, nil
 }
 
 // NewBasicWal - creates a new WAL instance and an underlying WAL file
@@ -154,15 +152,10 @@ func (wal *BasicWal) Append(log []byte) error {
 			Err:           err,
 		}
 	}
-	written, err := wal.file.Write(logBytes)
 
-	if err != nil {
-		// when the log is partially written, we should rollback to the previous sequence number
-		// and return an append error
-		if written != len(logBytes) {
-			if rollbackErr := wal.rollback(oldSize); rollbackErr != nil {
-				return rollbackErr
-			}
+	if _, err := WriteDataWithVarintSizePrefix(wal.file, logBytes); err != nil {
+		if rollbackErr := wal.rollback(oldSize); rollbackErr != nil {
+			return rollbackErr
 		}
 		return &WalError{
 			Op:            OP_APPEND,
