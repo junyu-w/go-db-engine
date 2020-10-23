@@ -69,7 +69,7 @@ type SSTableIndex interface {
 type BasicSSTable struct {
 	file *os.File
 	idx  BasicSSTableIndex
-	// BlockSize - controls roughly how big each block should be
+	// BlockSize - controls roughly how big each block should be (in bytes)
 	BlockSize uint
 }
 

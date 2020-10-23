@@ -15,10 +15,10 @@ type MemTable interface {
 	GetRange(start, end string) [][]byte
 
 	// Write - write key with value into memtable
-	Write(key string, value []byte)
+	Write(key string, value []byte) error
 
 	// Delete - delete a record with key
-	Delete(key string)
+	Delete(key string) error
 
 	// Wal - returns the write-ahead-log instance for write ops recording
 	Wal() Wal
@@ -133,7 +133,7 @@ func (m *SkipListMemTable) GetRange(start, end string) [][]byte {
 func (m *SkipListMemTable) GetAll() []*MemtableRecord {
 	records := make([]*MemtableRecord, m.s.size, m.s.size)
 	i := 0
-	for node := m.s.head; node != m.s.sentinel && node != nil; node = node.forwardNodeAtLevel[0] {
+	for node := m.s.head.forwardNodeAtLevel[0]; node != nil; node = node.forwardNodeAtLevel[0] {
 		records[i] = &MemtableRecord{
 			Key:   node.key,
 			Value: node.value,
