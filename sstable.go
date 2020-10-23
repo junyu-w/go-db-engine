@@ -1,6 +1,7 @@
 package dbengine
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,19 +12,27 @@ import (
 )
 
 // SSTable file layout:
-// - <data_blocks>\n<data size>\n<index>\n<index size>
+// - <data size (varint, fixed size)><data_blocks><index size (varint)><index>
 //
-// NOTE: The reason that we write size after the actual data block is because this allows us to perform
-// SEQUENTIAL WRITES.Instead of having to calculate and write final data block size by either holding everything
-// in memory or reshuffling the stored bytes. This makes read a little bit unintuitive since we need to perform
-// initial reads backwards to interpret the data layout.
-//
+// NOTE:
+// <data size> --> reserved number of bytes required for max 64-bit varint (binary.MaxVarintLen64), so the actual
+// data blocks always start at offset `binary.MaxVarintLen64`
+// the reason that we reserve a fixed numebr of bytes to record data size is because we don't know the size of
+// data blocks until we've written all the data blocks, and holding all the data in-memory is not efficient. Therefore
+// to improve write efficiency, we:
+// 	1. write empty size header at the beginning
+//	2. write data blocks one-by-one sequentially
+// 	3. seek to the beginning and record the total size (and seek back)
 //
 // data_blocks layout
-// - <block_1 size><block_1>\n...<block_N size><block_N>
+// - what is it? - data blocks are concatenation of data block (see below) with each data block prefixed by their size
+// - <block_1 size (varint)><block_1>...<block_N size (varint)><block_N>
 //
-// block layout
-// - compressed serialized protocol buffer
+// data block:
+// - What is it? - a data block is a block of bytes that contains key-value pairs of size roughly equal
+// to the block size configured. Optionally the bytes might be after compression so reading the data requires
+// decompression first.
+// - layout: (compressed, optionally) serialized protocol buffer
 
 // SSTable - represents a sstable file
 type SSTable interface {
@@ -66,7 +75,7 @@ type BasicSSTable struct {
 // BasicSSTableIndex - a basic implementation of the `SSTableIndex` interface
 type BasicSSTableIndex map[string]uint64
 
-// TODO:: better error handling in this file overall, similar to WAL file
+// TODO: better error handling in this file overall, similar to WAL file
 
 // NewBasicSSTable - creates a new basic sstable object
 func NewBasicSSTable(sstableDir string, blockSize uint) *BasicSSTable {
@@ -86,8 +95,7 @@ func newSSTableFile(sstableDir string) (*os.File, error) {
 	filename := filepath.Join(sstableDir, fmt.Sprintf("sstable_%d", ts))
 	// os.O_CREATE|os.O_EXCL - create file only when it doesn't exist, error out otherwise
 	// os.O_RDWR - open for read & write
-	// os.O_APPEND - append only, since when writing to the sstable file we only need to perform sequential writes
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_RDWR|os.O_APPEND, 0644)
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -107,33 +115,45 @@ func (s *BasicSSTable) File() string {
 // Dump - dumps the memtable into the sstable file
 func (s *BasicSSTable) Dump(m MemTable) error {
 	records := m.GetAll()
+
 	// write data
-	totalWritten, err := s.writeDataAndUpdateIndex(records)
-	if err != nil {
+	if err := s.writeDataAndBuildIndex(records); err != nil {
 		return err
 	}
-	s.file.Write([]byte("\n"))
-
-	// write data size
-	s.file.Write([]byte(fmt.Sprintf("%d", totalWritten)))
-	s.file.Write([]byte("\n"))
-
 	// write index
-	written, err := s.writeIndexData()
-	if err != nil {
+	if err := s.writeIndex(); err != nil {
 		return err
 	}
-	s.file.Write([]byte("\n"))
-
-	// write index size
-	s.file.Write([]byte(fmt.Sprintf("%d", written)))
 
 	return nil
 }
 
-// writeDataAndUpdateIndex - write memtable records to sstable file, update index corespondingly
+// writeDataAndBuildIndex - write data to the sstable file and build the index based on the data
+func (s *BasicSSTable) writeDataAndBuildIndex(records []*MemtableRecord) error {
+	// write data size header placeholder
+	sizeBuf := make([]byte, binary.MaxVarintLen64)
+	if _, err := s.file.Write(sizeBuf); err != nil {
+		return err
+	}
+
+	// write data blocks
+	totalWritten, err := s.writeDataBlocksAndUpdateIndex(records)
+	if err != nil {
+		return err
+	}
+
+	// write data size to the header
+	binary.PutUvarint(sizeBuf, uint64(totalWritten))
+	if _, err = s.file.WriteAt(sizeBuf, 0); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// writeDataBlocksAndUpdateIndex - write memtable records to sstable file, update index corespondingly
 // and return total bytes written
-func (s *BasicSSTable) writeDataAndUpdateIndex(records []*MemtableRecord) (int, error) {
+func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(records []*MemtableRecord) (int, error) {
 	accBlockKeyValueSize := 0
 	totalDataSize := 0
 
@@ -183,19 +203,21 @@ func (s *BasicSSTable) writeDataAndUpdateIndex(records []*MemtableRecord) (int, 
 	return totalDataSize, nil
 }
 
+// writeBlock - write a data block to the sstable file
 func (s *BasicSSTable) writeBlock(block *pb.SSTableBlock) (int, error) {
 	raw, err := s.serializeBlock(block)
 	if err != nil {
 		return 0, err
 	}
 
-	written, err := s.file.Write(raw)
+	written, err := WriteDataWithVarintSizePrefix(s.file, raw)
 	if err != nil {
 		return written, err
 	}
 	return written, nil
 }
 
+// serializeBlock - serialize a data block into bytes
 func (s *BasicSSTable) serializeBlock(block *pb.SSTableBlock) ([]byte, error) {
 	data, err := proto.Marshal(block)
 	if err != nil {
@@ -210,21 +232,21 @@ func (s *BasicSSTable) serializeBlock(block *pb.SSTableBlock) ([]byte, error) {
 	return compressed, nil
 }
 
-// writeIndexData - write sstable index to sstable file and return total bytes written
-func (s *BasicSSTable) writeIndexData() (int, error) {
+// writeIndex - write sstable index to sstable file and return total bytes written
+func (s *BasicSSTable) writeIndex() error {
 	data, err := s.idx.Serialize()
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	written, err := s.file.Write(data)
+	_, err = WriteDataWithVarintSizePrefix(s.file, data)
 	if err != nil {
-		return written, err
+		return err
 	}
-	return written, nil
+	return nil
 }
 
-// TODO:: compress - compresses a data block
+// TODO: compress - compresses a data block
 func (s *BasicSSTable) compress(raw []byte) ([]byte, error) {
 	return raw, nil
 }
