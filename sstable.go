@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/golang/snappy"
+
 	"github.com/DrakeW/go-db-engine/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -78,11 +80,14 @@ type BasicSSTableIndex map[string]uint64
 
 // TODO: better error handling in this file overall, similar to WAL file
 
-// NewBasicSSTable - creates a new basic sstable object
-func NewBasicSSTable(sstableDir string, blockSize uint) *BasicSSTable {
-	f, err := newSSTableFile(sstableDir)
-	if err != nil {
-		panic(err)
+// NewBasicSSTable - creates a new basic sstable object from existing file or create a new file
+func NewBasicSSTable(f *os.File, sstableDir string, blockSize uint) *BasicSSTable {
+	if f == nil {
+		sstableFile, err := newSSTableFile(sstableDir)
+		if err != nil {
+			panic(err)
+		}
+		f = sstableFile
 	}
 	return &BasicSSTable{
 		file:      f,
@@ -253,15 +258,18 @@ func (s *BasicSSTable) writeIndex() error {
 	return nil
 }
 
-// TODO: compress - compresses a data block
+// compress - compresses a data block
 func (s *BasicSSTable) compress(raw []byte) ([]byte, error) {
-	return raw, nil
+	return snappy.Encode(nil, raw), nil
 }
 
-// compress - decompresses a data block
-// TODO: (p2)
+// decompress - decompresses a data block
 func (s *BasicSSTable) decompress(compressed []byte) ([]byte, error) {
-	return compressed, nil
+	raw, err := snappy.Decode(nil, compressed)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
 
 // Get - returns the value of key specified

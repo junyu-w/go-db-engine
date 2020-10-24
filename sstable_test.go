@@ -7,7 +7,7 @@ import (
 )
 
 func Test_NewSSTableShouldCreateNewFileWithUniqueTimestamp(t *testing.T) {
-	s := NewBasicSSTable(os.TempDir(), 10)
+	s := NewBasicSSTable(nil, os.TempDir(), 10)
 
 	if _, err := os.Stat(s.File()); os.IsNotExist(err) {
 		t.Errorf("file at path %s does not exist", s.File())
@@ -15,7 +15,7 @@ func Test_NewSSTableShouldCreateNewFileWithUniqueTimestamp(t *testing.T) {
 }
 
 func Test_DumpShouldWriteBothDataAndIndex(t *testing.T) {
-	s := NewBasicSSTable(os.TempDir(), 50)
+	s := NewBasicSSTable(nil, os.TempDir(), 50)
 	fmt.Println(s.File())
 
 	memtable := getTestMemtable(t, 100)
@@ -24,7 +24,7 @@ func Test_DumpShouldWriteBothDataAndIndex(t *testing.T) {
 }
 
 func Test_DumpShouldWriteDataAndIndexEvenIfTotalDataToWriteIsLessThanConfiguredBlockSize(t *testing.T) {
-	s := NewBasicSSTable(os.TempDir(), 1000)
+	s := NewBasicSSTable(nil, os.TempDir(), 1024)
 	fmt.Println(s.File())
 
 	memtable := getTestMemtable(t, 10)
