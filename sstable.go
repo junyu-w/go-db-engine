@@ -1,6 +1,7 @@
 package dbengine
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -8,9 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/golang/snappy"
-
 	"github.com/DrakeW/go-db-engine/pb"
+	"github.com/golang/snappy"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -161,7 +161,7 @@ func (s *BasicSSTable) writeDataAndBuildIndex(records []*MemtableRecord) error {
 	}
 
 	// write data blocks
-	totalWritten, err := s.writeDataBlocksAndUpdateIndex(records)
+	totalWritten, err := s.writeDataBlocksAndUpdateIndex(binary.MaxVarintLen64, records)
 	if err != nil {
 		return err
 	}
@@ -175,9 +175,9 @@ func (s *BasicSSTable) writeDataAndBuildIndex(records []*MemtableRecord) error {
 	return nil
 }
 
-// writeDataBlocksAndUpdateIndex - write memtable records to sstable file, update index corespondingly
-// and return total bytes written
-func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(records []*MemtableRecord) (int, error) {
+// writeDataBlocksAndUpdateIndex - write memtable records to sstable file starting at offset `startOffset` (to
+// account for data size header) and update index corespondingly and return total bytes written
+func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(startOffset int, records []*MemtableRecord) (int, error) {
 	accBlockKeyValueSize := 0
 	totalDataSize := 0
 
@@ -203,7 +203,7 @@ func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(records []*MemtableRecord) 
 			// update index, offset is previous total data size
 			startKey := block.Data[0].Key
 			endKey := block.Data[len(block.Data)-1].Key
-			s.idx.update(startKey, endKey, uint64(totalDataSize), uint64(written))
+			s.idx.update(startKey, endKey, uint64(startOffset+totalDataSize), uint64(written))
 
 			// update tracker states
 			totalDataSize += written
@@ -221,7 +221,7 @@ func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(records []*MemtableRecord) 
 		// update index, offset is previous total data size
 		startKey := block.Data[0].Key
 		endKey := block.Data[len(block.Data)-1].Key
-		s.idx.update(startKey, endKey, uint64(totalDataSize), uint64(written))
+		s.idx.update(startKey, endKey, uint64(startOffset+totalDataSize), uint64(written))
 
 		totalDataSize += written
 	}
@@ -286,10 +286,41 @@ func (s *BasicSSTable) decompress(compressed []byte) ([]byte, error) {
 	return raw, nil
 }
 
-// Get - returns the value of key specified
-// TODO: implement
+// Get - returns the value of key specified if exist
 func (s *BasicSSTable) Get(key string) ([]byte, error) {
 	// read data block into memory
+	offset, size, exist := s.idx.GetOffset(key)
+	if !exist {
+		return nil, nil
+	}
+
+	buf := make([]byte, size, size)
+	if _, err := s.file.ReadAt(buf, int64(offset)); err != nil {
+		return nil, err
+	}
+
+	dataBuf, err := ReadDataWithVarintPrefix(bytes.NewReader(buf), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := s.decompress(dataBuf)
+	if err != nil {
+		return nil, err
+	}
+
+	// iterate through data block to find key match
+	block := &pb.SSTableBlock{}
+	if err = proto.Unmarshal(data, block); err != nil {
+		return nil, err
+	}
+
+	for _, entry := range block.Data {
+		if entry.Key == key {
+			return entry.Value, nil
+		}
+	}
+
 	return nil, nil
 }
 
