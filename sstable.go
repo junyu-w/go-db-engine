@@ -309,7 +309,7 @@ func NewBasicSSTableIndex() *BasicSSTableIndex {
 
 // update - if key exists, update an existing index entry. If key is new, it's assumed that the
 // input key is greater than all the existing keys in the index
-func (idx BasicSSTableIndex) update(startKey, endKey string, offset, size uint64) {
+func (idx *BasicSSTableIndex) update(startKey, endKey string, offset, size uint64) {
 	entry, ok := idx.meta[startKey]
 	if ok {
 		entry.endKey = endKey
@@ -328,7 +328,7 @@ func (idx BasicSSTableIndex) update(startKey, endKey string, offset, size uint64
 }
 
 // GetOffset - get start and end offset (in byte) of data block that contains value for key in the sstable file
-func (idx BasicSSTableIndex) GetOffset(key string) (offset, size uint64, exist bool) {
+func (idx *BasicSSTableIndex) GetOffset(key string) (offset, size uint64, exist bool) {
 	entry, exist := idx.meta[key]
 	if !exist {
 		for _, entry := range idx.entries {
@@ -348,12 +348,12 @@ func (idx BasicSSTableIndex) GetOffset(key string) (offset, size uint64, exist b
 // GetOffsetRange - get start, end offsets (in byte) of data blocks in the sstable file for the
 // key range specified
 // TODO: (p2)
-func (idx BasicSSTableIndex) GetOffsetRange(start, end string) (startOffset, endOffset uint64, exist bool) {
+func (idx *BasicSSTableIndex) GetOffsetRange(start, end string) (startOffset, endOffset uint64, exist bool) {
 	return 0, 0, false
 }
 
 // Serialize - turn the index data structure into bytes that can be stored on disk
-func (idx BasicSSTableIndex) Serialize() ([]byte, error) {
+func (idx *BasicSSTableIndex) Serialize() ([]byte, error) {
 	idxData := make([]*pb.SSTableIndexEntry, len(idx.entries), len(idx.entries))
 	for i, entry := range idx.entries {
 		idxData[i] = &pb.SSTableIndexEntry{

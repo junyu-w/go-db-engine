@@ -44,3 +44,80 @@ func getTestMemtable(t *testing.T, numberOfItems int) MemTable {
 	}
 	return m
 }
+
+func Test_IndexUpdateShouldChangeExistingEntryIfExist(t *testing.T) {
+	idx := getTestIndex(t)
+
+	oldEnetry := idx.entries[0]
+	// changed size
+	idx.update("key-0", "key-9", 0, 1000)
+
+	if oldEnetry.size != 1000 {
+		t.Error("entry did not get updated")
+	}
+}
+
+func Test_IndexUpdateShouldAddNewEntryIfNotExist(t *testing.T) {
+	idx := getTestIndex(t)
+
+	idx.update("key-150", "key-200", 1500, 2000)
+
+	offset, size, exist := idx.GetOffset("key-150")
+
+	if !exist || offset != 1500 || size != 2000 {
+		t.Error("entry didn't get added")
+	}
+}
+
+func Test_IndexGetOffsetShouldReturnDataBlockInfoIfKeyFallsInRange(t *testing.T) {
+	idx := getTestIndex(t)
+
+	offset, size, exist := idx.GetOffset("key-26")
+
+	if !exist || offset != 20 || size != 100 {
+		t.Error("Entry not exist or wrong entry returned")
+	}
+}
+
+func Test_IndexGetOffsetShouldReturnNotExistIfKeyIsLessThanFirstDataBlock(t *testing.T) {
+	idx := getTestIndex(t)
+
+	_, _, exist := idx.GetOffset("key-01")
+
+	if exist {
+		t.Error("Entry shouldn't exist")
+	}
+}
+
+func Test_IndexGetOffsetShouldReturnNotExistIfKeyIsGreaterThanLastDataBlock(t *testing.T) {
+	idx := getTestIndex(t)
+
+	_, _, exist := idx.GetOffset("key-105")
+
+	if exist {
+		t.Error("Entry shouldn't exist")
+	}
+}
+
+func Test_IndexGetOffsetShouldReturnNotExistIfKeyIsInBetweenTwoDataBlocks(t *testing.T) {
+	idx := getTestIndex(t)
+
+	_, _, exist := idx.GetOffset("key-22")
+
+	if exist {
+		t.Error("Entry shouldn't exist")
+	}
+}
+
+// getTestIndex - returns data blocks with starting and end keys every other 5 numbers. e.g.
+// [key5, key10], [key15, key20], ... [key95, key100] so that we can test different scenarios
+func getTestIndex(t *testing.T) *BasicSSTableIndex {
+	t.Helper()
+
+	idx := NewBasicSSTableIndex()
+
+	for i := 0; i < 100; i += 10 {
+		idx.update(fmt.Sprintf("key-%02d", i+5), fmt.Sprintf("key-%02d", i+10), uint64(i), 100)
+	}
+	return idx
+}
