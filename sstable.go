@@ -58,10 +58,10 @@ type SSTable interface {
 // SSTableIndex - represents an index for a SSTable file
 type SSTableIndex interface {
 	// GetOffset - get starting offset (in byte) of the block that contians the value for key
-	GetOffset(key string) (offset uint)
+	GetOffset(key string) (offset, size uint64, exist bool)
 
 	// GetOffsetRange - get start, end (non-inclusive) offsets (in byte) of blocks for key range specified
-	GetOffsetRange(start, end string) (startOffset, endOffset uint)
+	GetOffsetRange(start, end string) (startOffset, endOffset uint64, exist bool)
 
 	// Serialize - turn the index data structure into bytes that can be stored on disk
 	Serialize() ([]byte, error)
@@ -70,18 +70,30 @@ type SSTableIndex interface {
 // BasicSSTable - a basic implementation of the `SSTable` interface
 type BasicSSTable struct {
 	file *os.File
-	idx  BasicSSTableIndex
+	idx  *BasicSSTableIndex
 	// BlockSize - controls roughly how big each block should be (in bytes)
 	BlockSize uint
 }
 
 // BasicSSTableIndex - a basic implementation of the `SSTableIndex` interface
-type BasicSSTableIndex map[string]uint64
+type BasicSSTableIndex struct {
+	entries []*indexEntry
+	// map start key to index entry
+	meta map[string]*indexEntry
+}
+
+type indexEntry struct {
+	startKey string
+	endKey   string
+	offset   uint64
+	size     uint64
+}
 
 // TODO: better error handling in this file overall, similar to WAL file
 
 // NewBasicSSTable - creates a new basic sstable object from existing file or create a new file
 func NewBasicSSTable(f *os.File, sstableDir string, blockSize uint) *BasicSSTable {
+	// TODO: maybe for reading sstable should have a separate reader interface to separate from the writer
 	if f == nil {
 		sstableFile, err := newSSTableFile(sstableDir)
 		if err != nil {
@@ -91,7 +103,7 @@ func NewBasicSSTable(f *os.File, sstableDir string, blockSize uint) *BasicSSTabl
 	}
 	return &BasicSSTable{
 		file:      f,
-		idx:       BasicSSTableIndex{},
+		idx:       NewBasicSSTableIndex(),
 		BlockSize: blockSize,
 	}
 }
@@ -189,8 +201,9 @@ func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(records []*MemtableRecord) 
 				return totalDataSize, err
 			}
 			// update index, offset is previous total data size
-			startingKey := block.Data[0].Key
-			s.idx[startingKey] = uint64(totalDataSize)
+			startKey := block.Data[0].Key
+			endKey := block.Data[len(block.Data)-1].Key
+			s.idx.update(startKey, endKey, uint64(totalDataSize), uint64(written))
 
 			// update tracker states
 			totalDataSize += written
@@ -206,8 +219,9 @@ func (s *BasicSSTable) writeDataBlocksAndUpdateIndex(records []*MemtableRecord) 
 			return totalDataSize, err
 		}
 		// update index, offset is previous total data size
-		startingKey := block.Data[0].Key
-		s.idx[startingKey] = uint64(totalDataSize)
+		startKey := block.Data[0].Key
+		endKey := block.Data[len(block.Data)-1].Key
+		s.idx.update(startKey, endKey, uint64(totalDataSize), uint64(written))
 
 		totalDataSize += written
 	}
@@ -273,8 +287,9 @@ func (s *BasicSSTable) decompress(compressed []byte) ([]byte, error) {
 }
 
 // Get - returns the value of key specified
-// TODO: (p1)
+// TODO: implement
 func (s *BasicSSTable) Get(key string) ([]byte, error) {
+	// read data block into memory
 	return nil, nil
 }
 
@@ -284,22 +299,73 @@ func (s *BasicSSTable) GetRange(start, end string) ([][]byte, error) {
 	return nil, nil
 }
 
-// GetOffset - get offset (in byte) of key in the sstable file
-// TODO: (p1)
-func (idx BasicSSTableIndex) GetOffset(key string) (offset uint) {
-	return 0
+// NewBasicSSTableIndex - creates a new basic sstable index
+func NewBasicSSTableIndex() *BasicSSTableIndex {
+	return &BasicSSTableIndex{
+		entries: make([]*indexEntry, 0),
+		meta:    make(map[string]*indexEntry),
+	}
 }
 
-// GetOffsetRange - get start, end offsets (in byte) of key range specified in the sstable file
+// update - if key exists, update an existing index entry. If key is new, it's assumed that the
+// input key is greater than all the existing keys in the index
+func (idx BasicSSTableIndex) update(startKey, endKey string, offset, size uint64) {
+	entry, ok := idx.meta[startKey]
+	if ok {
+		entry.endKey = endKey
+		entry.offset = uint64(offset)
+		entry.size = size
+	} else {
+		newEntry := &indexEntry{
+			startKey: startKey,
+			endKey:   endKey,
+			offset:   offset,
+			size:     size,
+		}
+		idx.entries = append(idx.entries, newEntry)
+		idx.meta[startKey] = newEntry
+	}
+}
+
+// GetOffset - get start and end offset (in byte) of data block that contains value for key in the sstable file
+func (idx BasicSSTableIndex) GetOffset(key string) (offset, size uint64, exist bool) {
+	entry, exist := idx.meta[key]
+	if !exist {
+		for _, entry := range idx.entries {
+			if key >= entry.startKey && key <= entry.endKey {
+				return entry.offset, entry.size, true
+			}
+			// it falls in the middle of two data blocks (bigger than prev's end key, less than cur's start key)
+			if key <= entry.startKey {
+				return 0, 0, false
+			}
+		}
+		return 0, 0, false
+	}
+	return entry.offset, entry.size, exist
+}
+
+// GetOffsetRange - get start, end offsets (in byte) of data blocks in the sstable file for the
+// key range specified
 // TODO: (p2)
-func (idx BasicSSTableIndex) GetOffsetRange(start, end string) (startOffset, endOffset uint) {
-	return 0, 0
+func (idx BasicSSTableIndex) GetOffsetRange(start, end string) (startOffset, endOffset uint64, exist bool) {
+	return 0, 0, false
 }
 
 // Serialize - turn the index data structure into bytes that can be stored on disk
 func (idx BasicSSTableIndex) Serialize() ([]byte, error) {
+	idxData := make([]*pb.SSTableIndexEntry, len(idx.entries), len(idx.entries))
+	for i, entry := range idx.entries {
+		idxData[i] = &pb.SSTableIndexEntry{
+			StartKey: entry.startKey,
+			EndKey:   entry.endKey,
+			Offset:   entry.offset,
+			Size:     entry.size,
+		}
+	}
+
 	pbIdx := &pb.SSTableIndex{
-		Data: idx,
+		Data: idxData,
 	}
 
 	data, err := proto.Marshal(pbIdx)

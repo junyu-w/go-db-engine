@@ -12,5 +12,12 @@ message SSTableKeyValue {
 }
 
 message SSTableIndex {
-  map<string, uint64> data = 1;
+  repeated SSTableIndexEntry data = 1;
+}
+
+message SSTableIndexEntry {
+  string start_key = 1;
+  string end_key = 2;
+  uint64 offset = 3;
+  uint64 size = 4;
 }
