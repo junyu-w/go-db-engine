@@ -76,10 +76,9 @@ type SSTableIndex interface {
 
 // BasicSSTable - a basic implementation of the `SSTableReader` and `SSTableWriter` interface
 type BasicSSTable struct {
-	file *os.File
-	idx  *BasicSSTableIndex
-	// BlockSize - controls roughly how big each block should be (in bytes)
-	BlockSize uint
+	file      *os.File
+	idx       *BasicSSTableIndex
+	BlockSize uint // BlockSize - controls roughly how big each block should be (in bytes)
 }
 
 // BasicSSTableIndex - a basic implementation of the `SSTableIndex` interface

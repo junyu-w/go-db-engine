@@ -65,8 +65,46 @@ func Test_DumpShouldWriteDataAndIndexEvenIfTotalDataToWriteIsLessThanConfiguredB
 	}
 }
 
-func getTestMemtable(t *testing.T, numberOfItems int) MemTable {
-	t.Helper()
+func Benchmark_DumpWith4KBDataBlock(b *testing.B) {
+	m := getTestMemtable(b, b.N)
+	s := NewBasicSSTableWriter(os.TempDir(), 1024*4)
+
+	s.Dump(m)
+
+	b.Cleanup(func() {
+		os.Remove(s.File())
+	})
+}
+
+func Benchmark_Get(b *testing.B) {
+	s := getBenchmarkSSTableFile(b, b.N)
+	r := NewBasicSSTableReader(s)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		val, err := r.Get(fmt.Sprintf("key-%03d", i))
+		if val == nil || err != nil {
+			b.Error("value couldn't be retrieved")
+		}
+	}
+
+	b.Cleanup(func() {
+		os.Remove(r.File())
+	})
+}
+
+func getBenchmarkSSTableFile(b *testing.B, numberOfEntries int) string {
+	b.Helper()
+
+	m := getTestMemtable(b, numberOfEntries)
+	s := NewBasicSSTableWriter(os.TempDir(), 1024*4)
+	s.Dump(m)
+
+	return s.File()
+}
+
+func getTestMemtable(tb testing.TB, numberOfItems int) MemTable {
+	tb.Helper()
 
 	m := NewBasicMemTable(os.TempDir())
 	for i := 0; i < numberOfItems; i++ {

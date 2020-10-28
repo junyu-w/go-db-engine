@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestInsertOneWhenListIsEmpty(t *testing.T) {
+func Test_InsertOneWhenListIsEmpty(t *testing.T) {
 	s := newSkipList()
 	s.upsert("hello", []byte("world"))
 
@@ -18,7 +18,7 @@ func TestInsertOneWhenListIsEmpty(t *testing.T) {
 	}
 }
 
-func TestInOrderInsert(t *testing.T) {
+func Test_InOrderInsert(t *testing.T) {
 	s := newSkipList()
 
 	keyList := makeRange(t, 10, false)
@@ -34,7 +34,7 @@ func TestInOrderInsert(t *testing.T) {
 	}
 }
 
-func TestReverseOrderInsert(t *testing.T) {
+func Test_ReverseOrderInsert(t *testing.T) {
 	s := newSkipList()
 
 	keyList := makeRange(t, 10, false)
@@ -51,7 +51,7 @@ func TestReverseOrderInsert(t *testing.T) {
 	}
 }
 
-func TestRandomInsert(t *testing.T) {
+func Test_RandomInsert(t *testing.T) {
 	s := newSkipList()
 
 	keyList := makeRange(t, 10, true)
@@ -71,7 +71,7 @@ func TestRandomInsert(t *testing.T) {
 	}
 }
 
-func TestUpdateShouldUpdateExistingElement(t *testing.T) {
+func Test_UpdateShouldUpdateExistingElement(t *testing.T) {
 	s := newSkipList()
 
 	keyList := makeRange(t, 10, true)
@@ -93,7 +93,7 @@ func TestUpdateShouldUpdateExistingElement(t *testing.T) {
 	}
 }
 
-func TestSearchExist(t *testing.T) {
+func Test_SearchExist(t *testing.T) {
 	s := newSkipList()
 
 	keyList := makeRange(t, 10, true)
@@ -110,7 +110,7 @@ func TestSearchExist(t *testing.T) {
 	}
 }
 
-func TestSearchNonExistInSingleElementList(t *testing.T) {
+func Test_SearchNonExistInSingleElementList(t *testing.T) {
 	s := newSkipList()
 	s.upsert("hello", []byte("world"))
 
@@ -120,7 +120,7 @@ func TestSearchNonExistInSingleElementList(t *testing.T) {
 	}
 }
 
-func TestSearchNonExistInMultiElementsList(t *testing.T) {
+func Test_SearchNonExistInMultiElementsList(t *testing.T) {
 	s := newSkipList()
 
 	keyList := makeRange(t, 10, true)
@@ -148,14 +148,14 @@ func Test_skipListShouldTrackSize(t *testing.T) {
 	}
 }
 
-func BenchmarkInsertInOrder(b *testing.B) {
+func Benchmark_InsertInOrder(b *testing.B) {
 	s := newSkipList()
 	for i := 0; i < b.N; i++ {
 		s.upsert(strconv.Itoa(i), []byte("hello world"))
 	}
 }
 
-func BenchmarkInsertRandom(b *testing.B) {
+func Benchmark_InsertRandom(b *testing.B) {
 	s := newSkipList()
 
 	keyList := makeRange(b, b.N, true)
