@@ -42,7 +42,10 @@ func ReadDataWithVarintPrefix(r VarintSizePrefixDataReader, buf []byte) ([]byte,
 	if buf == nil || uint64(len(buf)) < l {
 		buf = make([]byte, l, l)
 	}
-	r.Read(buf)
+	n, err := r.Read(buf)
+	if err != nil {
+		return nil, err
+	}
 
-	return buf, nil
+	return buf[:n], nil
 }

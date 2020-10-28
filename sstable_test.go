@@ -21,6 +21,14 @@ func Test_DumpShouldWriteBothDataAndIndex(t *testing.T) {
 	memtable := getTestMemtable(t, 100)
 	// TODO: add test that verifies content
 	s.Dump(memtable)
+
+	value, err := s.Get("key-055")
+	if err != nil {
+		t.Error(err.Error())
+	}
+	if string(value) != "value-055" {
+		t.Errorf("Got %s instead", string(value))
+	}
 }
 
 func Test_DumpShouldWriteDataAndIndexEvenIfTotalDataToWriteIsLessThanConfiguredBlockSize(t *testing.T) {
@@ -38,8 +46,8 @@ func getTestMemtable(t *testing.T, numberOfItems int) MemTable {
 	m := NewBasicMemTable(os.TempDir())
 	for i := 0; i < numberOfItems; i++ {
 		m.Write(
-			fmt.Sprintf("key-%d", i),
-			[]byte(fmt.Sprintf("value-%d", i)),
+			fmt.Sprintf("key-%03d", i),
+			[]byte(fmt.Sprintf("value-%03d", i)),
 		)
 	}
 	return m
@@ -50,7 +58,7 @@ func Test_IndexUpdateShouldChangeExistingEntryIfExist(t *testing.T) {
 
 	oldEnetry := idx.entries[0]
 	// changed size
-	idx.update("key-0", "key-9", 0, 1000)
+	idx.update("key-05", "key-09", 0, 1000)
 
 	if oldEnetry.size != 1000 {
 		t.Error("entry did not get updated")

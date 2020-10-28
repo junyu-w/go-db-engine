@@ -299,7 +299,7 @@ func (s *BasicSSTable) Get(key string) ([]byte, error) {
 		return nil, err
 	}
 
-	dataBuf, err := ReadDataWithVarintPrefix(bytes.NewReader(buf), nil)
+	dataBuf, err := ReadDataWithVarintPrefix(bytes.NewReader(buf), buf)
 	if err != nil {
 		return nil, err
 	}
