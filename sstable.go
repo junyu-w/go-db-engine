@@ -1,6 +1,7 @@
 package dbengine
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -37,16 +38,22 @@ import (
 // decompression first.
 // - layout: (compressed, optionally) serialized protocol buffer
 
-// SSTable - represents a sstable file
-type SSTable interface {
-	// Index - returns the index of the sstable, if there is one
-	Index() SSTableIndex
-
+// SSTableWriter - represents a writer that dump content into a sstable file
+type SSTableWriter interface {
 	// File - returns the file path of the sstable file
 	File() string
 
 	// Dump - dumps the memtable into the sstable file
 	Dump(MemTable) error
+}
+
+// SSTableReader - represents a reader that reads data from a sstable file
+type SSTableReader interface {
+	// Index - returns the index of the sstable, if there is one
+	Index() SSTableIndex
+
+	// File - returns the file path of the sstable file
+	File() string
 
 	// Get - returns the value of key specified
 	Get(key string) ([]byte, error)
@@ -67,7 +74,7 @@ type SSTableIndex interface {
 	Serialize() ([]byte, error)
 }
 
-// BasicSSTable - a basic implementation of the `SSTable` interface
+// BasicSSTable - a basic implementation of the `SSTableReader` and `SSTableWriter` interface
 type BasicSSTable struct {
 	file *os.File
 	idx  *BasicSSTableIndex
@@ -91,21 +98,70 @@ type indexEntry struct {
 
 // TODO: better error handling in this file overall, similar to WAL file
 
-// NewBasicSSTable - creates a new basic sstable object from existing file or create a new file
-func NewBasicSSTable(f *os.File, sstableDir string, blockSize uint) *BasicSSTable {
-	// TODO: maybe for reading sstable should have a separate reader interface to separate from the writer
-	if f == nil {
-		sstableFile, err := newSSTableFile(sstableDir)
-		if err != nil {
-			panic(err)
-		}
-		f = sstableFile
+// NewBasicSSTableWriter - creates a new `SSTableWriter` instance along with newly created sstable file
+func NewBasicSSTableWriter(sstableDir string, blockSize uint) SSTableWriter {
+	sstableFile, err := newSSTableFile(sstableDir)
+	if err != nil {
+		panic(err)
 	}
 	return &BasicSSTable{
-		file:      f,
+		file:      sstableFile,
 		idx:       NewBasicSSTableIndex(),
 		BlockSize: blockSize,
 	}
+}
+
+// NewBasicSSTableReader - creates a new `SSTableReader` instance that handles reading data from sstable file
+func NewBasicSSTableReader(sstableFile string) SSTableReader {
+	// open file in read-only mode since reader shouldn't be writing to sstable file
+	f, err := os.OpenFile(sstableFile, os.O_RDONLY, 0444)
+	if err != nil {
+		panic(err)
+	}
+
+	idx, err := loadIndexFromFile(f)
+	if err != nil {
+		panic(err)
+	}
+
+	return &BasicSSTable{
+		file: f,
+		idx:  idx,
+		// BlockSize - set to 0 since for reader this doesn't matter
+		BlockSize: 0,
+	}
+}
+
+// loadIndexFromFile - load sstable index from the sstable file
+func loadIndexFromFile(f *os.File) (*BasicSSTableIndex, error) {
+	reader := bufio.NewReader(f)
+
+	dataSize, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	// move to the end of the data blocks section
+	f.Seek(int64(dataSize+binary.MaxVarintLen64), io.SeekStart)
+	// discard any buffered data so the previous seek is effective
+	reader.Reset(f)
+
+	buf, err := ReadDataWithVarintPrefix(reader, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	idx := &pb.SSTableIndex{}
+	if err = proto.Unmarshal(buf, idx); err != nil {
+		return nil, err
+	}
+
+	sstableIdx := NewBasicSSTableIndex()
+	for _, entry := range idx.Data {
+		sstableIdx.update(entry.StartKey, entry.EndKey, entry.Offset, entry.Size)
+	}
+
+	return sstableIdx, nil
 }
 
 func newSSTableFile(sstableDir string) (*os.File, error) {

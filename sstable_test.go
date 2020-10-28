@@ -1,13 +1,14 @@
 package dbengine
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"testing"
 )
 
 func Test_NewSSTableShouldCreateNewFileWithUniqueTimestamp(t *testing.T) {
-	s := NewBasicSSTable(nil, os.TempDir(), 10)
+	s := NewBasicSSTableWriter(os.TempDir(), 10)
 
 	if _, err := os.Stat(s.File()); os.IsNotExist(err) {
 		t.Errorf("file at path %s does not exist", s.File())
@@ -15,29 +16,53 @@ func Test_NewSSTableShouldCreateNewFileWithUniqueTimestamp(t *testing.T) {
 }
 
 func Test_DumpShouldWriteBothDataAndIndex(t *testing.T) {
-	s := NewBasicSSTable(nil, os.TempDir(), 50)
+	s := NewBasicSSTableWriter(os.TempDir(), 50)
 	fmt.Println(s.File())
 
 	memtable := getTestMemtable(t, 100)
-	// TODO: add test that verifies content
 	s.Dump(memtable)
 
-	value, err := s.Get("key-055")
+	// verify content
+	sr := NewBasicSSTableReader(s.File())
+
+	value, err := sr.Get("key-055")
 	if err != nil {
 		t.Error(err.Error())
 	}
 	if string(value) != "value-055" {
 		t.Errorf("Got %s instead", string(value))
 	}
+
+	idx := sr.Index()
+	offset, size, exist := idx.GetOffset("key-055")
+	if !exist || offset != 721 || size != 54 {
+		t.Error("index didn't get written correctly")
+	}
 }
 
 func Test_DumpShouldWriteDataAndIndexEvenIfTotalDataToWriteIsLessThanConfiguredBlockSize(t *testing.T) {
-	s := NewBasicSSTable(nil, os.TempDir(), 1024)
+	s := NewBasicSSTableWriter(os.TempDir(), 1024*400)
 	fmt.Println(s.File())
 
-	memtable := getTestMemtable(t, 10)
-	// TODO: add test that verifies content
+	memtable := getTestMemtable(t, 100)
 	s.Dump(memtable)
+
+	// verify content
+	sr := NewBasicSSTableReader(s.File())
+
+	value, err := sr.Get("key-055")
+	if err != nil {
+		t.Error(err.Error())
+	}
+	if string(value) != "value-055" {
+		t.Errorf("Got %s instead", string(value))
+	}
+
+	idx := sr.Index()
+	offset, size, exist := idx.GetOffset("key-055")
+	if !exist || offset != binary.MaxVarintLen64 || size != 825 {
+		t.Error("index didn't get written correctly")
+	}
 }
 
 func getTestMemtable(t *testing.T, numberOfItems int) MemTable {
