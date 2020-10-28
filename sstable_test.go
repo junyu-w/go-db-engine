@@ -79,7 +79,6 @@ func Benchmark_DumpWith4KBDataBlock(b *testing.B) {
 func Benchmark_Get(b *testing.B) {
 	s := getBenchmarkSSTableFile(b, b.N)
 	r := NewBasicSSTableReader(s)
-	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		val, err := r.Get(fmt.Sprintf("key-%03d", i))

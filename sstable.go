@@ -76,9 +76,10 @@ type SSTableIndex interface {
 
 // BasicSSTable - a basic implementation of the `SSTableReader` and `SSTableWriter` interface
 type BasicSSTable struct {
-	file      *os.File
-	idx       *BasicSSTableIndex
-	BlockSize uint // BlockSize - controls roughly how big each block should be (in bytes)
+	file        *os.File
+	idx         *BasicSSTableIndex
+	BlockSize   uint                        // BlockSize - controls roughly how big each block should be (in bytes)
+	rBlockCache map[uint64]*pb.SSTableBlock // reader cache for block that has been read before, key is offset of data block
 }
 
 // BasicSSTableIndex - a basic implementation of the `SSTableIndex` interface
@@ -124,10 +125,10 @@ func NewBasicSSTableReader(sstableFile string) SSTableReader {
 	}
 
 	return &BasicSSTable{
-		file: f,
-		idx:  idx,
-		// BlockSize - set to 0 since for reader this doesn't matter
-		BlockSize: 0,
+		file:        f,
+		idx:         idx,
+		BlockSize:   0, // BlockSize - set to 0 since for reader this doesn't matter
+		rBlockCache: make(map[uint64]*pb.SSTableBlock),
 	}
 }
 
@@ -349,25 +350,31 @@ func (s *BasicSSTable) Get(key string) ([]byte, error) {
 		return nil, nil
 	}
 
-	buf := make([]byte, size, size)
-	if _, err := s.file.ReadAt(buf, int64(offset)); err != nil {
-		return nil, err
-	}
+	block, exist := s.rBlockCache[offset]
+	if !exist {
+		buf := make([]byte, size, size)
+		if _, err := s.file.ReadAt(buf, int64(offset)); err != nil {
+			return nil, err
+		}
 
-	dataBuf, err := ReadDataWithVarintPrefix(bytes.NewReader(buf), buf)
-	if err != nil {
-		return nil, err
-	}
+		dataBuf, err := ReadDataWithVarintPrefix(bytes.NewReader(buf), buf)
+		if err != nil {
+			return nil, err
+		}
 
-	data, err := s.decompress(dataBuf)
-	if err != nil {
-		return nil, err
-	}
+		data, err := s.decompress(dataBuf)
+		if err != nil {
+			return nil, err
+		}
 
-	// iterate through data block to find key match
-	block := &pb.SSTableBlock{}
-	if err = proto.Unmarshal(data, block); err != nil {
-		return nil, err
+		// iterate through data block to find key match
+		block = &pb.SSTableBlock{}
+		if err = proto.Unmarshal(data, block); err != nil {
+			return nil, err
+		}
+
+		// update reader cache
+		s.rBlockCache[offset] = block
 	}
 
 	for _, entry := range block.Data {
