@@ -128,7 +128,7 @@ func Test_AppendShouldRollbackIfLogNotFullyWritten(t *testing.T) {
 	// check correct error type & content written
 	var walErr *WalError
 	if errors.As(err, &walErr) {
-		if walErr.Op != OP_APPEND || walErr.BeforeLastSeq != 0 || walErr.Err != errDeviceFull {
+		if walErr.Op != OP_WAL_APPEND || walErr.BeforeLastSeq != 0 || walErr.Err != errDeviceFull {
 			t.Errorf("Unexpected error returned - Error: %s", walErr)
 		}
 	}

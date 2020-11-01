@@ -8,7 +8,7 @@ import (
 )
 
 func Test_NewSSTableShouldCreateNewFileWithUniqueTimestamp(t *testing.T) {
-	s := NewBasicSSTableWriter(os.TempDir(), 10)
+	s, _ := NewBasicSSTableWriter(os.TempDir(), 10)
 
 	if _, err := os.Stat(s.File()); os.IsNotExist(err) {
 		t.Errorf("file at path %s does not exist", s.File())
@@ -16,14 +16,14 @@ func Test_NewSSTableShouldCreateNewFileWithUniqueTimestamp(t *testing.T) {
 }
 
 func Test_DumpShouldWriteBothDataAndIndex(t *testing.T) {
-	s := NewBasicSSTableWriter(os.TempDir(), 50)
+	s, _ := NewBasicSSTableWriter(os.TempDir(), 50)
 	fmt.Println(s.File())
 
 	memtable := getTestMemtable(t, 100)
 	s.Dump(memtable)
 
 	// verify content
-	sr := NewBasicSSTableReader(s.File())
+	sr, _ := NewBasicSSTableReader(s.File())
 
 	value, err := sr.Get("key-055")
 	if err != nil {
@@ -41,14 +41,14 @@ func Test_DumpShouldWriteBothDataAndIndex(t *testing.T) {
 }
 
 func Test_DumpShouldWriteDataAndIndexEvenIfTotalDataToWriteIsLessThanConfiguredBlockSize(t *testing.T) {
-	s := NewBasicSSTableWriter(os.TempDir(), 1024*400)
+	s, _ := NewBasicSSTableWriter(os.TempDir(), 1024*400)
 	fmt.Println(s.File())
 
 	memtable := getTestMemtable(t, 100)
 	s.Dump(memtable)
 
 	// verify content
-	sr := NewBasicSSTableReader(s.File())
+	sr, _ := NewBasicSSTableReader(s.File())
 
 	value, err := sr.Get("key-055")
 	if err != nil {
@@ -67,7 +67,7 @@ func Test_DumpShouldWriteDataAndIndexEvenIfTotalDataToWriteIsLessThanConfiguredB
 
 func Benchmark_DumpWith4KBDataBlock(b *testing.B) {
 	m := getTestMemtable(b, b.N)
-	s := NewBasicSSTableWriter(os.TempDir(), 1024*4)
+	s, _ := NewBasicSSTableWriter(os.TempDir(), 1024*4)
 
 	s.Dump(m)
 
@@ -78,7 +78,7 @@ func Benchmark_DumpWith4KBDataBlock(b *testing.B) {
 
 func Benchmark_Get(b *testing.B) {
 	s := getBenchmarkSSTableFile(b, b.N)
-	r := NewBasicSSTableReader(s)
+	r, _ := NewBasicSSTableReader(s)
 
 	for i := 0; i < b.N; i++ {
 		val, err := r.Get(fmt.Sprintf("key-%03d", i))
@@ -96,7 +96,7 @@ func getBenchmarkSSTableFile(b *testing.B, numberOfEntries int) string {
 	b.Helper()
 
 	m := getTestMemtable(b, numberOfEntries)
-	s := NewBasicSSTableWriter(os.TempDir(), 1024*4)
+	s, _ := NewBasicSSTableWriter(os.TempDir(), 1024*4)
 	s.Dump(m)
 
 	return s.File()

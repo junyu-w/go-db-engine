@@ -39,11 +39,11 @@ type WalFile interface {
 }
 
 const (
-	OP_CREATE_FILE = "OP_CREATE_FILE"
-	OP_READ_FILE   = "OP_READ_FILE"
-	OP_APPEND      = "OP_APPEND"
-	OP_ROLLBACK    = "OP_ROLLBACK"
-	OP_DELETE      = "OP_DELETE"
+	OP_WAL_CREATE_FILE = "OP_WAL_CREATE_FILE"
+	OP_WAL_READ_FILE   = "OP_WAL_READ_FILE"
+	OP_WAL_APPEND      = "OP_WAL_APPEND"
+	OP_WAL_ROLLBACK    = "OP_WAL_ROLLBACK"
+	OP_WAL_DELETE      = "OP_WAL_DELETE"
 )
 
 // WalError - wraps errors with WAL operation and basic information before the error happens
@@ -53,14 +53,14 @@ type WalError struct {
 	Err           error
 }
 
-func (walErr WalError) Error() string {
+func (walErr *WalError) Error() string {
 	return fmt.Sprintf(
 		"WAL operation (code %s) failed - Error: %s. Latest successful sequence: %d",
 		walErr.Op, walErr.Err.Error(), walErr.BeforeLastSeq,
 	)
 }
 
-func (walErr WalError) Unwrap() error {
+func (walErr *WalError) Unwrap() error {
 	return walErr.Err
 }
 
@@ -117,7 +117,7 @@ func NewWalFile(walDir string) (*os.File, error) {
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_EXCL|os.O_RDWR|os.O_SYNC, 0644)
 	if err != nil {
 		return nil, &WalError{
-			Op:            OP_CREATE_FILE,
+			Op:            OP_WAL_CREATE_FILE,
 			BeforeLastSeq: 0,
 			Err:           err,
 		}
@@ -133,7 +133,7 @@ func (wal *BasicWal) Append(log []byte) error {
 	fileInfo, err := wal.file.Stat()
 	if err != nil {
 		return &WalError{
-			Op:            OP_READ_FILE,
+			Op:            OP_WAL_READ_FILE,
 			BeforeLastSeq: wal.seq,
 			Err:           err,
 		}
@@ -147,7 +147,7 @@ func (wal *BasicWal) Append(log []byte) error {
 	logBytes, err := newLog.Serialize()
 	if err != nil {
 		return &WalError{
-			Op:            OP_APPEND,
+			Op:            OP_WAL_APPEND,
 			BeforeLastSeq: wal.seq,
 			Err:           err,
 		}
@@ -158,7 +158,7 @@ func (wal *BasicWal) Append(log []byte) error {
 			return rollbackErr
 		}
 		return &WalError{
-			Op:            OP_APPEND,
+			Op:            OP_WAL_APPEND,
 			BeforeLastSeq: wal.seq,
 			Err:           err,
 		}
@@ -171,7 +171,7 @@ func (wal *BasicWal) Append(log []byte) error {
 func (wal *BasicWal) rollback(size int64) error {
 	if err := wal.file.Truncate(size); err != nil {
 		return &WalError{
-			Op:            OP_ROLLBACK,
+			Op:            OP_WAL_ROLLBACK,
 			BeforeLastSeq: wal.seq,
 			Err:           err,
 		}
@@ -191,7 +191,7 @@ func (wal *BasicWal) Delete() error {
 
 	if err := os.Remove(wal.file.Name()); err != nil {
 		return &WalError{
-			Op:            OP_DELETE,
+			Op:            OP_WAL_DELETE,
 			BeforeLastSeq: wal.seq,
 			Err:           err,
 		}

@@ -96,32 +96,62 @@ type indexEntry struct {
 	size     uint64
 }
 
-// TODO: better error handling in this file overall, similar to WAL file
+const (
+	OP_SSTABLE_READ_FILE      = "OP_SSTABLE_READ_FILE"
+	OP_SSTABLE_LOAD_INDEX     = "OP_SSTABLE_LOAD_INDEX"
+	OP_SSTABLE_LOAD_DATABLOCK = "OP_SSTABLE_LOAD_DATABLOCK"
+	OP_SSTABLE_CREATE_FILE    = "OP_SSTABLE_CREATE_FILE"
+	OP_SSTABLE_WRITE_DATA     = "OP_SSTABLE_WRITE_DATA"
+	OP_SSTABLE_WRITE_INDEX    = "OP_SSTABLE_WRITE_INDEX"
+)
+
+// SSTableError - includes error for specifc sstable operation
+type SSTableError struct {
+	Op  string
+	Err error
+}
+
+func (stErr *SSTableError) Error() string {
+	return fmt.Sprintf("SSTable operation (code %s) failed - Error: %s", stErr.Op, stErr.Err.Error())
+}
+
+func (stErr *SSTableError) Unwrap() error {
+	return stErr.Err
+}
 
 // NewBasicSSTableWriter - creates a new `SSTableWriter` instance along with newly created sstable file
-func NewBasicSSTableWriter(sstableDir string, blockSize uint) SSTableWriter {
+func NewBasicSSTableWriter(sstableDir string, blockSize uint) (SSTableWriter, error) {
 	sstableFile, err := newSSTableFile(sstableDir)
 	if err != nil {
-		panic(err)
+		return nil, &SSTableError{
+			Op:  OP_SSTABLE_CREATE_FILE,
+			Err: err,
+		}
 	}
 	return &BasicSSTable{
 		file:      sstableFile,
 		idx:       NewBasicSSTableIndex(),
 		BlockSize: blockSize,
-	}
+	}, nil
 }
 
 // NewBasicSSTableReader - creates a new `SSTableReader` instance that handles reading data from sstable file
-func NewBasicSSTableReader(sstableFile string) SSTableReader {
+func NewBasicSSTableReader(sstableFile string) (SSTableReader, error) {
 	// open file in read-only mode since reader shouldn't be writing to sstable file
 	f, err := os.OpenFile(sstableFile, os.O_RDONLY, 0444)
 	if err != nil {
-		panic(err)
+		return nil, &SSTableError{
+			Op:  OP_SSTABLE_READ_FILE,
+			Err: err,
+		}
 	}
 
 	idx, err := loadIndexFromFile(f)
 	if err != nil {
-		panic(err)
+		return nil, &SSTableError{
+			Op:  OP_SSTABLE_LOAD_INDEX,
+			Err: err,
+		}
 	}
 
 	return &BasicSSTable{
@@ -129,7 +159,7 @@ func NewBasicSSTableReader(sstableFile string) SSTableReader {
 		idx:         idx,
 		BlockSize:   0, // BlockSize - set to 0 since for reader this doesn't matter
 		rBlockCache: make(map[uint64]*pb.SSTableBlock),
-	}
+	}, nil
 }
 
 // loadIndexFromFile - load sstable index from the sstable file
@@ -192,11 +222,17 @@ func (s *BasicSSTable) Dump(m MemTable) error {
 
 	// write data
 	if err := s.writeDataAndBuildIndex(records); err != nil {
-		return err
+		return &SSTableError{
+			Op:  OP_SSTABLE_WRITE_DATA,
+			Err: err,
+		}
 	}
 	// write index
 	if err := s.writeIndex(); err != nil {
-		return err
+		return &SSTableError{
+			Op:  OP_SSTABLE_WRITE_INDEX,
+			Err: err,
+		}
 	}
 
 	return nil
@@ -354,23 +390,35 @@ func (s *BasicSSTable) Get(key string) ([]byte, error) {
 	if !exist {
 		buf := make([]byte, size, size)
 		if _, err := s.file.ReadAt(buf, int64(offset)); err != nil {
-			return nil, err
+			return nil, &SSTableError{
+				Op:  OP_SSTABLE_LOAD_DATABLOCK,
+				Err: err,
+			}
 		}
 
 		dataBuf, err := ReadDataWithVarintPrefix(bytes.NewReader(buf), buf)
 		if err != nil {
-			return nil, err
+			return nil, &SSTableError{
+				Op:  OP_SSTABLE_LOAD_DATABLOCK,
+				Err: err,
+			}
 		}
 
 		data, err := s.decompress(dataBuf)
 		if err != nil {
-			return nil, err
+			return nil, &SSTableError{
+				Op:  OP_SSTABLE_LOAD_DATABLOCK,
+				Err: err,
+			}
 		}
 
 		// iterate through data block to find key match
 		block = &pb.SSTableBlock{}
 		if err = proto.Unmarshal(data, block); err != nil {
-			return nil, err
+			return nil, &SSTableError{
+				Op:  OP_SSTABLE_LOAD_DATABLOCK,
+				Err: err,
+			}
 		}
 
 		// update reader cache

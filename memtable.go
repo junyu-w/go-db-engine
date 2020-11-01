@@ -44,7 +44,7 @@ type SkipListMemTable struct {
 }
 
 // NewBasicMemTable - create a new memtable instance
-func NewBasicMemTable(walDir string) *SkipListMemTable {
+func NewBasicMemTable(walDir string) MemTable {
 	wal, err := NewBasicWal(walDir)
 	if err != nil {
 		panic(err)
