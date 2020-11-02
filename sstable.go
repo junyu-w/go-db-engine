@@ -15,6 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// TODO: (p3) add bloomfilter for quick key non-exist check
+
 // SSTable file layout:
 // - <data size (varint, fixed size)><data_blocks><index size (varint)><index>
 //
