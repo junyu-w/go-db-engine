@@ -9,6 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// TODO: (p3) implement saving of database configs & load an existing database
+
 // Database - something that you can write data to and read data from
 type Database struct {
 	setting                 *DBSetting
@@ -86,6 +88,7 @@ func (db *Database) getAllSSTableFileMetadata() ([]*SSTableFileMetadata, error) 
 	return allMeta, nil
 }
 
+// memtableCompactionLoop - handles compacting memtable into sstable files into disk (a.k.a "minor compaction")
 func (db *Database) memtableCompactionLoop() {
 	for {
 		select {
@@ -102,8 +105,8 @@ func (db *Database) memtableCompactionLoop() {
 	}
 }
 
-// sstableFileCompactionLoop - separate thread for compacting smaller sstable files into larger file
-// TODO: implement this
+// sstableFileCompactionLoop - compacting smaller sstable files into larger file (a.k.a "major compaction")
+// TODO: (p1) implement sstable compaction
 func (db *Database) sstableFileCompactionLoop() {}
 
 func (db *Database) serializeMemtable(mem MemTable) error {
@@ -172,7 +175,7 @@ func (db *Database) Write(key string, value []byte) error {
 }
 
 // Delete - delete a key from the database
-// TODO: make the deletion behavior correct across from memtable and sstable
+// TODO: (p1) make the deletion behavior correct across from memtable and sstable
 func (db *Database) Delete(key string) error {
 	if err := db.curMem.Delete(key); err != nil {
 		return err

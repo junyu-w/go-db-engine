@@ -44,7 +44,7 @@ type SkipListMemTable struct {
 }
 
 // NewBasicMemTable - create a new memtable instance
-// TODO: make the memtable implementaion thread-safe
+// TODO: (p3) make the memtable implementaion thread-safe
 func NewBasicMemTable(walDir string) MemTable {
 	wal, err := NewBasicWal(walDir)
 	if err != nil {
@@ -125,7 +125,7 @@ func (m *SkipListMemTable) Delete(key string) error {
 }
 
 // GetRange - retrieves all values from specified key range
-// TODO: P(2)
+// TODO: (p2) implement GetRange
 func (m *SkipListMemTable) GetRange(start, end string) [][]byte {
 	return nil
 }

@@ -437,7 +437,7 @@ func (s *BasicSSTable) Get(key string) ([]byte, error) {
 }
 
 // GetRange - returns the values of key range specified
-// TODO: (p2)
+// TODO: (p2) Implement getRange
 func (s *BasicSSTable) GetRange(start, end string) ([][]byte, error) {
 	return nil, nil
 }
@@ -490,7 +490,7 @@ func (idx *BasicSSTableIndex) GetOffset(key string) (offset, size uint64, exist 
 
 // GetOffsetRange - get start, end offsets (in byte) of data blocks in the sstable file for the
 // key range specified
-// TODO: (p2)
+// TODO: (p2) implement GetOffSetRange
 func (idx *BasicSSTableIndex) GetOffsetRange(start, end string) (startOffset, endOffset uint64, exist bool) {
 	return 0, 0, false
 }
