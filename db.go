@@ -13,12 +13,12 @@ import (
 
 // Database - something that you can write data to and read data from
 type Database struct {
-	setting                 *DBSetting
-	walDir                  string
-	sstableDir              string
-	curMem                  MemTable
-	memtablesToCompact      []MemTable    // all memtables that are to be serialized to disk
-	memtableCompactionQueue chan MemTable // the queue handles the compactions tasks of converting memtable into sstable
+	setting                *DBSetting
+	walDir                 string
+	sstableDir             string
+	curMem                 MemTable
+	memtablesToCompact     []MemTable    // the list of memtables that are going to be compacted
+	memtableCompactionChan chan MemTable // the channel handles the compactions tasks of converting memtable into sstable
 }
 
 // SSTableFileMetadata - metadata about sstable file
@@ -42,12 +42,12 @@ func NewDatabase(configs ...DBConfig) (*Database, error) {
 	}
 
 	db := &Database{
-		setting:                 setting,
-		walDir:                  walDir,
-		sstableDir:              sstableDir,
-		curMem:                  NewBasicMemTable(walDir),
-		memtablesToCompact:      make([]MemTable, 0),
-		memtableCompactionQueue: make(chan MemTable),
+		setting:                setting,
+		walDir:                 walDir,
+		sstableDir:             sstableDir,
+		curMem:                 NewBasicMemTable(walDir),
+		memtablesToCompact:     make([]MemTable, 0),
+		memtableCompactionChan: make(chan MemTable),
 	}
 
 	if err := db.setupLogging(); err != nil {
@@ -60,6 +60,7 @@ func NewDatabase(configs ...DBConfig) (*Database, error) {
 	return db, nil
 }
 
+// setupLogging - setup logging for the database
 func (db *Database) setupLogging() error {
 	file, err := os.OpenFile(filepath.Join(db.setting.DBDir, "db.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -71,6 +72,7 @@ func (db *Database) setupLogging() error {
 	return nil
 }
 
+// getAllSSTableFileMetadata - get all sstable files metadata in reverse chronological order (latest first)
 func (db *Database) getAllSSTableFileMetadata() ([]*SSTableFileMetadata, error) {
 	files, err := ioutil.ReadDir(db.sstableDir)
 	if err != nil {
@@ -92,13 +94,14 @@ func (db *Database) getAllSSTableFileMetadata() ([]*SSTableFileMetadata, error) 
 func (db *Database) memtableCompactionLoop() {
 	for {
 		select {
-		case mem := <-db.memtableCompactionQueue:
+		case mem := <-db.memtableCompactionChan:
 			if err := db.serializeMemtable(mem); err != nil {
-				log.Errorf("Failed to serialize memtable to sstable - Error: %s", err.Error())
+				log.Fatalf("Failed to serialize memtable to sstable - Error: %s", err.Error())
 			}
+
 			// delete the WAL since the wal isn't needed anymore for a memtable that's serialized already
 			if err := mem.Wal().Delete(); err != nil {
-				log.Errorf("Failed to delete WAL file %s after serializing its corresponding memtable - Error: %s", mem.Wal().File().Name(), err.Error())
+				log.Warnf("Failed to delete WAL file %s after serializing its corresponding memtable - Error: %s", mem.Wal().File().Name(), err.Error())
 			}
 			log.Infof("Deleted WAL file %s", mem.Wal().File().Name())
 		}
@@ -128,6 +131,7 @@ func (db *Database) Get(key string) ([]byte, error) {
 	if value != nil {
 		return value, nil
 	}
+
 	// Try to read from the memtables that are in queue for serialization
 	for _, memToSerialize := range db.memtablesToCompact {
 		value = memToSerialize.Get(key)
@@ -135,6 +139,7 @@ func (db *Database) Get(key string) ([]byte, error) {
 			return value, nil
 		}
 	}
+
 	// if still no luck, iterate through the sstable files from latest to earliest
 	metas, err := db.getAllSSTableFileMetadata()
 	if err != nil {
@@ -163,8 +168,9 @@ func (db *Database) Write(key string, value []byte) error {
 	sizeAfterWrite := db.curMem.SizeBytes()
 	// when memtable has grown over threshold, send it for serialization
 	if db.curMem.SizeBytes() >= uint32(db.setting.MemtableSizeByte) {
-		db.memtableCompactionQueue <- db.curMem
+		db.memtableCompactionChan <- db.curMem
 		db.curMem = NewBasicMemTable(db.walDir)
+
 		log.Infof(
 			"Memtable has exceeded size limit (size: %d, limit: %d). Enqueued for serialization to sstable",
 			sizeAfterWrite,
