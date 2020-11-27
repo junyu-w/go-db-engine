@@ -21,7 +21,7 @@ type TestFile struct {
 func newTestFile(t *testing.T, r io.Reader, w io.Writer) *TestFile {
 	t.Helper()
 
-	f, err := NewWalFile(os.TempDir())
+	f, err := NewWalFile(os.TempDir(), true)
 	if err != nil {
 		panic(err)
 	}
@@ -70,7 +70,7 @@ func badTruncateWriter(t *testing.T, w io.Writer, size int64) io.Writer {
 }
 
 func Test_CreateNewWalFileShouldCreateFile(t *testing.T) {
-	f, err := NewWalFile(os.TempDir())
+	f, err := NewWalFile(os.TempDir(), true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -83,7 +83,7 @@ func Test_CreateNewWalFileShouldCreateFile(t *testing.T) {
 func Test_CreateNewWalFileShouldFailIfFileFailedToCreate(t *testing.T) {}
 
 func Test_AppendShouldAppendNewLog(t *testing.T) {
-	f, err := NewWalFile(os.TempDir())
+	f, err := NewWalFile(os.TempDir(), true)
 	if err != nil {
 		t.Error(err)
 	}

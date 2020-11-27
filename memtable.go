@@ -45,8 +45,8 @@ type SkipListMemTable struct {
 
 // NewBasicMemTable - create a new memtable instance
 // TODO: (p3) make the memtable implementaion thread-safe
-func NewBasicMemTable(walDir string) MemTable {
-	wal, err := NewBasicWal(walDir)
+func NewBasicMemTable(walDir string, walStrictModeOn bool) MemTable {
+	wal, err := NewBasicWal(walDir, walStrictModeOn)
 	if err != nil {
 		panic(err)
 	}

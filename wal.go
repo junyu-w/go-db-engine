@@ -93,9 +93,10 @@ func (l *BasicWalLog) Serialize() ([]byte, error) {
 }
 
 // NewBasicWal - creates a new WAL instance and an underlying WAL file
+// if `syncOnWrite` is set to true, each write operation will always be flushed to the storage device.
 // errors out if file with same name already exists (no WAL file reuse between `BasicWal` instances)
-func NewBasicWal(walDir string) (*BasicWal, error) {
-	f, err := NewWalFile(walDir)
+func NewBasicWal(walDir string, syncOnWrite bool) (*BasicWal, error) {
+	f, err := NewWalFile(walDir, syncOnWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -106,15 +107,24 @@ func NewBasicWal(walDir string) (*BasicWal, error) {
 }
 
 // NewWalFile - creates a new WAL file with name "wal_<unix timestamp>" under `walDir`
-func NewWalFile(walDir string) (*os.File, error) {
+// if `syncOnWrite` is set to true, each write operation will always be flushed to the storage device.
+//
+// Note that `syncOnWrite` will introduce a performance penalty (4x worse tested with 100k inserts, 4s vs. 15s).
+// It may not be necessary to set `syncOnWrite` on, because for some battery powered hardware even when the OS crashes or machined died (powered-off)
+// the file system cache can still be flushed to the underlying hardware
+func NewWalFile(walDir string, syncOnWrite bool) (*os.File, error) {
 	ts := time.Now().UnixNano()
 	filename := filepath.Join(walDir, fmt.Sprintf("wal_%d", ts))
 	// os.O_CREATE|os.O_EXCL - create file only when it doesn't exist, error out otherwise
 	// os.O_RDWR - open for read & write
 	// os.O_SYNC - enable synchronous IO (write always flush to underlying hardware, like "write" + "fsync")
 	// os.O_APPEND - file is open for APPEND only (no seeking needed)
-	// TODO: (p0) Since O_SYNC degrade perf (about 4x worse tested with 100k inserts, 4s vs. 15s), maybe it could be an optional flag for the user to determine how safe they want their system to be during crash. For some battery powered hardware, even when the OS crashes or machined died (powered-off), the file system cache can still be flushed to the underlying hardware
-	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_EXCL|os.O_RDWR|os.O_SYNC, 0644)
+	fileFlag := os.O_APPEND | os.O_CREATE | os.O_EXCL | os.O_RDWR
+	if syncOnWrite {
+		fileFlag = fileFlag | os.O_SYNC
+	}
+
+	f, err := os.OpenFile(filename, fileFlag, 0644)
 	if err != nil {
 		return nil, &WalError{
 			Op:            OP_WAL_CREATE_FILE,

@@ -46,7 +46,7 @@ func NewDatabase(configs ...DBConfig) (*Database, error) {
 		setting:                 setting,
 		walDir:                  walDir,
 		sstableDir:              sstableDir,
-		curMem:                  NewBasicMemTable(walDir),
+		curMem:                  NewBasicMemTable(walDir, setting.WalStrictModeOn),
 		memtableCompactionQueue: make([]MemTable, 0),
 		memtableCompactionChan:  make(chan MemTable),
 	}
@@ -172,7 +172,7 @@ func (db *Database) Write(key string, value []byte) error {
 	if db.curMem.SizeBytes() >= uint32(db.setting.MemtableSizeByte) {
 		db.memtableCompactionChan <- db.curMem
 		db.memtableCompactionQueue = append(db.memtableCompactionQueue, db.curMem)
-		db.curMem = NewBasicMemTable(db.walDir)
+		db.curMem = NewBasicMemTable(db.walDir, db.setting.WalStrictModeOn)
 
 		log.Infof(
 			"Memtable has exceeded size limit (size: %d, limit: %d). Enqueued for serialization to sstable",

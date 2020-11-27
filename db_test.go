@@ -121,3 +121,23 @@ func Benchmark_dbWrite(b *testing.B) {
 		)
 	}
 }
+
+func Benchmark_dbWriteStrictModeOn(b *testing.B) {
+	testDBDir := setupTestDBDir(b)
+	// use default setting
+	db, err := NewDatabase(
+		ConfigWalStrictMode(true),
+		ConfigDBDir(testDBDir),
+		ConfigLogLevel(log.InfoLevel),
+	)
+	if err != nil {
+		b.Errorf("Failed to initialize database - Error: %s", err.Error())
+	}
+
+	for i := 0; i < b.N; i++ {
+		db.Write(
+			fmt.Sprintf("key-%05d", i),
+			[]byte(fmt.Sprintf("value-%05d", i)),
+		)
+	}
+}

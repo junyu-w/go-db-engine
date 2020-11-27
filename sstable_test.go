@@ -105,7 +105,7 @@ func getBenchmarkSSTableFile(b *testing.B, numberOfEntries int) string {
 func getTestMemtable(tb testing.TB, numberOfItems int) MemTable {
 	tb.Helper()
 
-	m := NewBasicMemTable(os.TempDir())
+	m := NewBasicMemTable(os.TempDir(), false)
 	for i := 0; i < numberOfItems; i++ {
 		m.Write(
 			fmt.Sprintf("key-%03d", i),
