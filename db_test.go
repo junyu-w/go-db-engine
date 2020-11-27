@@ -73,7 +73,9 @@ func Test_dbGet(t *testing.T) {
 	db, err := NewDatabase(
 		ConfigDBDir(testDBDir),
 		ConfigWalStrictMode(true),
+		// make sure there is more than 1 sstable files generated
 		ConfigMemtableSizeByte(512),
+		// make sure each sstable contains multiple data blocks
 		ConfigSStableDatablockSizeByte(512/4),
 		ConfigLogLevel(log.InfoLevel),
 	)
@@ -98,5 +100,24 @@ func Test_dbGet(t *testing.T) {
 		if value == nil {
 			t.Errorf("Value for key %s not found", key)
 		}
+	}
+}
+
+func Benchmark_dbWrite(b *testing.B) {
+	testDBDir := setupTestDBDir(b)
+	// use default setting
+	db, err := NewDatabase(
+		ConfigDBDir(testDBDir),
+		ConfigLogLevel(log.InfoLevel),
+	)
+	if err != nil {
+		b.Errorf("Failed to initialize database - Error: %s", err.Error())
+	}
+
+	for i := 0; i < b.N; i++ {
+		db.Write(
+			fmt.Sprintf("key-%05d", i),
+			[]byte(fmt.Sprintf("value-%05d", i)),
+		)
 	}
 }

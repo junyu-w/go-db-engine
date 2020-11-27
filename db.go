@@ -13,12 +13,13 @@ import (
 
 // Database - something that you can write data to and read data from
 type Database struct {
-	setting                *DBSetting
-	walDir                 string
-	sstableDir             string
-	curMem                 MemTable
-	memtablesToCompact     []MemTable    // the list of memtables that are going to be compacted
-	memtableCompactionChan chan MemTable // the channel handles the compactions tasks of converting memtable into sstable
+	setting    *DBSetting
+	walDir     string
+	sstableDir string
+	curMem     MemTable
+	// TODO: (p1) refactor the queue and chan to make it so that we can register a hook to the enqueue/dequeue event to abstract the chan and queue
+	memtableCompactionQueue []MemTable    // the list of memtables that are going to be compacted, cache them here since they still need to serve GET
+	memtableCompactionChan  chan MemTable // the channel handles the compactions tasks of converting memtable into sstable
 }
 
 // SSTableFileMetadata - metadata about sstable file
@@ -42,12 +43,12 @@ func NewDatabase(configs ...DBConfig) (*Database, error) {
 	}
 
 	db := &Database{
-		setting:                setting,
-		walDir:                 walDir,
-		sstableDir:             sstableDir,
-		curMem:                 NewBasicMemTable(walDir),
-		memtablesToCompact:     make([]MemTable, 0),
-		memtableCompactionChan: make(chan MemTable),
+		setting:                 setting,
+		walDir:                  walDir,
+		sstableDir:              sstableDir,
+		curMem:                  NewBasicMemTable(walDir),
+		memtableCompactionQueue: make([]MemTable, 0),
+		memtableCompactionChan:  make(chan MemTable),
 	}
 
 	if err := db.setupLogging(); err != nil {
@@ -98,6 +99,7 @@ func (db *Database) memtableCompactionLoop() {
 			if err := db.serializeMemtable(mem); err != nil {
 				log.Fatalf("Failed to serialize memtable to sstable - Error: %s", err.Error())
 			}
+			db.memtableCompactionQueue = db.memtableCompactionQueue[1:]
 
 			// delete the WAL since the wal isn't needed anymore for a memtable that's serialized already
 			if err := mem.Wal().Delete(); err != nil {
@@ -133,7 +135,7 @@ func (db *Database) Get(key string) ([]byte, error) {
 	}
 
 	// Try to read from the memtables that are in queue for serialization
-	for _, memToSerialize := range db.memtablesToCompact {
+	for _, memToSerialize := range db.memtableCompactionQueue {
 		value = memToSerialize.Get(key)
 		if value != nil {
 			return value, nil
@@ -169,6 +171,7 @@ func (db *Database) Write(key string, value []byte) error {
 	// when memtable has grown over threshold, send it for serialization
 	if db.curMem.SizeBytes() >= uint32(db.setting.MemtableSizeByte) {
 		db.memtableCompactionChan <- db.curMem
+		db.memtableCompactionQueue = append(db.memtableCompactionQueue, db.curMem)
 		db.curMem = NewBasicMemTable(db.walDir)
 
 		log.Infof(
