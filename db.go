@@ -17,9 +17,8 @@ type Database struct {
 	walDir     string
 	sstableDir string
 	curMem     MemTable
-	// TODO: (p1) refactor the queue and chan to make it so that we can register a hook to the enqueue/dequeue event to abstract the chan and queue
-	memtableCompactionQueue []MemTable    // the list of memtables that are going to be compacted, cache them here since they still need to serve GET
-	memtableCompactionChan  chan MemTable // the channel handles the compactions tasks of converting memtable into sstable
+	memSvc     *memtableCompactService
+	compactSvc *sstableCompactService
 }
 
 // SSTableFileMetadata - metadata about sstable file
@@ -43,20 +42,21 @@ func NewDatabase(configs ...DBConfig) (*Database, error) {
 	}
 
 	db := &Database{
-		setting:                 setting,
-		walDir:                  walDir,
-		sstableDir:              sstableDir,
-		curMem:                  NewBasicMemTable(walDir, setting.WalStrictModeOn),
-		memtableCompactionQueue: make([]MemTable, 0),
-		memtableCompactionChan:  make(chan MemTable),
+		setting:    setting,
+		walDir:     walDir,
+		sstableDir: sstableDir,
+		curMem:     NewBasicMemTable(walDir, setting.WalStrictModeOn),
 	}
+
+	db.memSvc = newMemtableCompactService(db)
+	db.compactSvc = newSSTableCompactService(db)
 
 	if err := db.setupLogging(); err != nil {
 		return nil, err
 	}
 
-	go db.memtableCompactionLoop()
-	go db.sstableFileCompactionLoop()
+	go db.memSvc.start()
+	go db.compactSvc.start()
 
 	return db, nil
 }
@@ -91,41 +91,6 @@ func (db *Database) getAllSSTableFileMetadata() ([]*SSTableFileMetadata, error) 
 	return allMeta, nil
 }
 
-// memtableCompactionLoop - handles compacting memtable into sstable files into disk (a.k.a "minor compaction")
-func (db *Database) memtableCompactionLoop() {
-	for {
-		select {
-		case mem := <-db.memtableCompactionChan:
-			if err := db.serializeMemtable(mem); err != nil {
-				log.Fatalf("Failed to serialize memtable to sstable - Error: %s", err.Error())
-			}
-			db.memtableCompactionQueue = db.memtableCompactionQueue[1:]
-
-			// delete the WAL since the wal isn't needed anymore for a memtable that's serialized already
-			if err := mem.Wal().Delete(); err != nil {
-				log.Warnf("Failed to delete WAL file %s after serializing its corresponding memtable - Error: %s", mem.Wal().File().Name(), err.Error())
-			}
-			log.Infof("Deleted WAL file %s", mem.Wal().File().Name())
-		}
-	}
-}
-
-// sstableFileCompactionLoop - compacting smaller sstable files into larger file (a.k.a "major compaction")
-// TODO: (p1) implement sstable compaction
-func (db *Database) sstableFileCompactionLoop() {}
-
-func (db *Database) serializeMemtable(mem MemTable) error {
-	writer, err := NewBasicSSTableWriter(db.sstableDir, db.setting.SStableDatablockSizeByte)
-	if err != nil {
-		return err
-	}
-	if err = writer.Dump(mem); err != nil {
-		return err
-	}
-	log.Infof("Serialized memtable to sstable at %s", writer.File())
-	return nil
-}
-
 // Get - read value for key from the database
 func (db *Database) Get(key string) ([]byte, error) {
 	// Try to read first from the current memtable
@@ -135,7 +100,7 @@ func (db *Database) Get(key string) ([]byte, error) {
 	}
 
 	// Try to read from the memtables that are in queue for serialization
-	for _, memToSerialize := range db.memtableCompactionQueue {
+	for _, memToSerialize := range db.memSvc.getQueuedTables() {
 		value = memToSerialize.Get(key)
 		if value != nil {
 			return value, nil
@@ -149,6 +114,7 @@ func (db *Database) Get(key string) ([]byte, error) {
 	}
 
 	for _, meta := range metas {
+		// TODO: (p2) cache the opened reader using an LRU cache to improve performance
 		reader, err := NewBasicSSTableReader(filepath.Join(db.sstableDir, meta.filename))
 		if err != nil {
 			return nil, err
@@ -170,8 +136,7 @@ func (db *Database) Write(key string, value []byte) error {
 	sizeAfterWrite := db.curMem.SizeBytes()
 	// when memtable has grown over threshold, send it for serialization
 	if db.curMem.SizeBytes() >= uint32(db.setting.MemtableSizeByte) {
-		db.memtableCompactionChan <- db.curMem
-		db.memtableCompactionQueue = append(db.memtableCompactionQueue, db.curMem)
+		db.memSvc.enqueue(db.curMem)
 		db.curMem = NewBasicMemTable(db.walDir, db.setting.WalStrictModeOn)
 
 		log.Infof(
